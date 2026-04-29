@@ -5,7 +5,8 @@ import { URL } from "node:url";
 
 const AUTH_URL = "https://accounts.spotify.com/authorize";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
-const REDIRECT_URI = "http://127.0.0.1:8888/callback";
+const AUTH_PORT = Number(process.env.AUTH_PORT || 8888);
+const REDIRECT_URI = `http://127.0.0.1:${AUTH_PORT}/callback`;
 const SCOPES = ["playlist-read-private", "playlist-read-collaborative", "playlist-modify-private", "playlist-modify-public"];
 
 loadDotEnv();
@@ -60,7 +61,15 @@ function waitForAuthorizationCode(expectedState) {
       resolve(code);
     });
 
-    server.listen(8888, "127.0.0.1");
+    server.on("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        reject(new Error(`Port ${AUTH_PORT} is already in use. Stop the previous auth run or set AUTH_PORT to another port and add that redirect URI in Spotify.`));
+        return;
+      }
+      reject(error);
+    });
+
+    server.listen(AUTH_PORT, "127.0.0.1");
   });
 }
 
