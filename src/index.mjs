@@ -132,18 +132,20 @@ async function getPlaylistTracks(accessToken, playlistId) {
 async function replacePlaylistOrder(accessToken, playlistId, uris) {
   const [firstChunk, ...remainingChunks] = chunk(uris, MAX_REPLACE_SIZE);
 
-  await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/tracks`, {
+  const replaceResponse = await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/tracks`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ uris: firstChunk }),
   });
+  await parseJsonResponse(replaceResponse);
 
   for (const urisChunk of remainingChunks) {
-    await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/tracks`, {
+    const appendResponse = await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/tracks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ uris: urisChunk }),
     });
+    await parseJsonResponse(appendResponse);
   }
 }
 
