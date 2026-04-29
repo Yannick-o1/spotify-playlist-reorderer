@@ -42,6 +42,11 @@ function waitForAuthorizationCode(expectedState) {
       const returnedState = requestUrl.searchParams.get("state");
       const error = requestUrl.searchParams.get("error");
 
+      if (requestUrl.pathname !== "/callback") {
+        response.end("Spotify auth helper is waiting for the /callback redirect.");
+        return;
+      }
+
       if (error) {
         response.end("Spotify authorization failed. You can close this tab.");
         server.close();
@@ -49,8 +54,13 @@ function waitForAuthorizationCode(expectedState) {
         return;
       }
 
-      if (!code || returnedState !== expectedState) {
-        response.end("Invalid Spotify authorization response. You can close this tab.");
+      if (!code) {
+        response.end("No Spotify authorization code was received. Open the Spotify approval URL printed in the terminal.");
+        return;
+      }
+
+      if (returnedState !== expectedState) {
+        response.end("Invalid Spotify authorization state. Restart npm run auth and use the latest printed URL.");
         server.close();
         reject(new Error("Invalid authorization response."));
         return;
