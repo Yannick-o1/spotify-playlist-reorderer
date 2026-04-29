@@ -97,28 +97,29 @@ async function getPlaylistTracks(accessToken, playlistId) {
   const items = [];
   let nextUrl =
     `${API_BASE_URL}/playlists/${playlistId}/items?limit=${MAX_PAGE_SIZE}` +
-    "&fields=next,items(added_at,track(uri,id,name,duration_ms,explicit,popularity,artists(name),album(name,release_date,release_date_precision)))";
+    "&fields=next,items(added_at,item(uri,id,name,duration_ms,explicit,popularity,artists(name),album(name,release_date,release_date_precision)),track(uri,id,name,duration_ms,explicit,popularity,artists(name),album(name,release_date,release_date_precision)))";
 
   while (nextUrl) {
     const response = await spotifyFetch(accessToken, nextUrl);
     const page = await parseJsonResponse(response);
 
     for (const item of page.items || []) {
-      if (!item.track?.uri || item.track.uri.startsWith("spotify:local:")) {
+      const track = item.track || item.item;
+      if (!track?.uri || track.uri.startsWith("spotify:local:")) {
         continue;
       }
 
       items.push({
         addedAt: item.added_at || "",
-        uri: item.track.uri,
-        id: item.track.id || "",
-        name: item.track.name || "",
-        durationMs: item.track.duration_ms || 0,
-        explicit: Boolean(item.track.explicit),
-        popularity: item.track.popularity ?? 0,
-        artists: item.track.artists || [],
-        album: item.track.album || {},
-        releaseDatePrecision: item.track.album?.release_date_precision || "",
+        uri: track.uri,
+        id: track.id || "",
+        name: track.name || "",
+        durationMs: track.duration_ms || 0,
+        explicit: Boolean(track.explicit),
+        popularity: track.popularity ?? 0,
+        artists: track.artists || [],
+        album: track.album || {},
+        releaseDatePrecision: track.album?.release_date_precision || "",
       });
     }
 
