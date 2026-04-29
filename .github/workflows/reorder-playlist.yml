@@ -1,0 +1,35 @@
+name: Reorder Spotify playlist
+
+on:
+  workflow_dispatch:
+    inputs:
+      order_mode:
+        description: "Override ORDER_MODE for this run"
+        required: false
+        type: string
+  schedule:
+    # GitHub cron is UTC. The script only mutates the playlist at 13:00 Europe/London
+    # every other day, so these two UTC hours cover both GMT and BST.
+    - cron: "0 12,13 * * *"
+
+jobs:
+  reorder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check source
+        run: npm run check
+      - name: Reorder playlist
+        env:
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+          SPOTIFY_PLAYLIST_ID: ${{ secrets.SPOTIFY_PLAYLIST_ID }}
+          ORDER_MODE: ${{ inputs.order_mode || secrets.ORDER_MODE || 'random-eccentric' }}
+          ORDER_SEED: ${{ secrets.ORDER_SEED }}
+          EVERY_OTHER_DAY_ANCHOR: ${{ secrets.EVERY_OTHER_DAY_ANCHOR || '2026-04-29' }}
+          SCHEDULE_GUARD: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
+        run: npm start

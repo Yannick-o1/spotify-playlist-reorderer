@@ -1,0 +1,16 @@
+{
+  "name": "spotify-playlist-reorderer",
+  "version": "0.1.0",
+  "description": "Scheduled Spotify playlist reordering with random and rule-based order modes.",
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "start": "node src/index.mjs",
+    "auth": "node scripts/get-refresh-token.mjs",
+    "check": "node --check src/index.mjs && node --check scripts/get-refresh-token.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
