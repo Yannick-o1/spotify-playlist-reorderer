@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE_URL = "https://api.spotify.com/v1";
 const MAX_PAGE_SIZE = 100;
-const MAX_REPLACE_SIZE = 100;
 const COLOR_CACHE_PATH = "data/album-colors.json";
 
 loadDotEnv();
@@ -150,38 +149,63 @@ async function getPlaylistTracks(accessToken, playlistId) {
   return items;
 }
 
-async function replacePlaylistOrder(accessToken, playlistId, uris, restoreUris = []) {
-  try {
-    await writePlaylistOrder(accessToken, playlistId, uris);
-  } catch (error) {
-    if (restoreUris.length > 0) {
-      console.warn(`Playlist update failed; attempting to restore the previous order. Cause: ${error.message}`);
-      await writePlaylistOrder(accessToken, playlistId, restoreUris);
+async function replacePlaylistOrder(accessToken, playlistId, targetUris) {
+  const currentUris = await getPlaylistTrackUris(accessToken, playlistId);
+  if (currentUris.length !== targetUris.length) {
+    throw new Error(`Refusing to reorder because playlist size changed from ${targetUris.length} to ${currentUris.length}.`);
+  }
+
+  let moveCount = 0;
+  for (let targetIndex = 0; targetIndex < targetUris.length; targetIndex += 1) {
+    if (currentUris[targetIndex] === targetUris[targetIndex]) continue;
+
+    const currentIndex = currentUris.indexOf(targetUris[targetIndex], targetIndex + 1);
+    if (currentIndex === -1) {
+      throw new Error("Refusing to reorder because the target track set no longer matches the playlist.");
     }
-    throw error;
+
+    const moveResponse = await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/items`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        range_start: currentIndex,
+        insert_before: targetIndex,
+        range_length: 1,
+      }),
+    });
+    await parseJsonResponse(moveResponse);
+
+    const [movedUri] = currentUris.splice(currentIndex, 1);
+    currentUris.splice(targetIndex, 0, movedUri);
+    moveCount += 1;
+
+    if (moveCount % 50 === 0) {
+      console.log(`Moved ${moveCount} tracks...`);
+    }
+
+    await sleep(100);
   }
 }
 
-async function writePlaylistOrder(accessToken, playlistId, uris) {
-  const [firstChunk, ...remainingChunks] = chunk(uris, MAX_REPLACE_SIZE);
+async function getPlaylistTrackUris(accessToken, playlistId) {
+  const uris = [];
+  let nextUrl =
+    `${API_BASE_URL}/playlists/${playlistId}/items?limit=${MAX_PAGE_SIZE}` +
+    "&fields=next,items(item(uri),track(uri))";
 
-  const replaceResponse = await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/items`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uris: firstChunk }),
-  });
-  await parseJsonResponse(replaceResponse);
-  await sleep(250);
-
-  for (const urisChunk of remainingChunks) {
-    const appendResponse = await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/items`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uris: urisChunk }),
-    });
-    await parseJsonResponse(appendResponse);
-    await sleep(250);
+  while (nextUrl) {
+    const response = await spotifyFetch(accessToken, nextUrl);
+    const page = await parseJsonResponse(response);
+    for (const item of page.items || []) {
+      const track = item.track || item.item;
+      if (track?.uri && !track.uri.startsWith("spotify:local:")) {
+        uris.push(track.uri);
+      }
+    }
+    nextUrl = page.next;
   }
+
+  return uris;
 }
 
 async function spotifyFetch(accessToken, url, options = {}, attempt = 0) {
