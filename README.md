@@ -1,6 +1,6 @@
 # Spotify Playlist Reorderer
 
-Automatically reorder a Spotify playlist on a schedule. It is designed for GitHub Actions, so it can run every 5 minutes without a server or your laptop being on.
+Automatically reorder a Spotify playlist on a schedule. It is designed for GitHub Actions, so it can run hourly without a server or your laptop being on.
 
 ## What it can do
 
@@ -124,11 +124,12 @@ SPOTIFY_CLIENT_SECRET
 SPOTIFY_REFRESH_TOKEN
 SPOTIFY_PLAYLIST_ID
 ORDER_MODE
+MAX_MOVES_PER_RUN
 ```
 
-`ORDER_MODE` is optional and defaults to `random-eccentric`.
+`ORDER_MODE` is optional and defaults to `random-eccentric`. `MAX_MOVES_PER_RUN` defaults to `40`, which keeps hourly runs conservative with Spotify rate limits.
 
-The workflow in `.github/workflows/reorder-playlist.yml` runs every 5 minutes, which is GitHub Actions' shortest scheduled interval. Spotify rate limits are handled by waiting and retrying when Spotify returns `429`.
+The workflow in `.github/workflows/reorder-playlist.yml` runs hourly. Spotify rate limits are handled by waiting and retrying when Spotify returns `429`.
 
 If other people fork this project, they should create their own Spotify Developer app and GitHub secrets. Do not share your refresh token.
 

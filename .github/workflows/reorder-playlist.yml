@@ -8,8 +8,8 @@ on:
         required: false
         type: string
   schedule:
-    # GitHub's shortest scheduled workflow interval is every 5 minutes.
-    - cron: "*/5 * * * *"
+    # Hourly. GitHub cron is UTC and scheduled runs can be delayed under load.
+    - cron: "0 * * * *"
 
 concurrency:
   group: spotify-playlist-reorder
@@ -36,4 +36,5 @@ jobs:
           SPOTIFY_PLAYLIST_ID: ${{ secrets.SPOTIFY_PLAYLIST_ID }}
           ORDER_MODE: ${{ inputs.order_mode || secrets.ORDER_MODE || 'random-eccentric' }}
           ORDER_SEED: ${{ secrets.ORDER_SEED }}
+          MAX_MOVES_PER_RUN: ${{ secrets.MAX_MOVES_PER_RUN || '40' }}
         run: npm start

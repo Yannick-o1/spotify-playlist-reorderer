@@ -4,6 +4,7 @@ const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE_URL = "https://api.spotify.com/v1";
 const MAX_PAGE_SIZE = 100;
 const COLOR_CACHE_PATH = "data/album-colors.json";
+const DEFAULT_MAX_MOVES_PER_RUN = 40;
 
 loadDotEnv();
 const colorCache = loadColorCache();
@@ -15,6 +16,7 @@ const config = {
   playlistId: normalizePlaylistId(readRequiredEnv("SPOTIFY_PLAYLIST_ID")),
   orderMode: process.env.ORDER_MODE || "random-eccentric",
   orderSeed: process.env.ORDER_SEED || "",
+  maxMovesPerRun: readOptionalNumberEnv("MAX_MOVES_PER_RUN", DEFAULT_MAX_MOVES_PER_RUN),
 };
 
 const NON_COLOR_METHODS = new Map([
@@ -181,6 +183,11 @@ async function replacePlaylistOrder(accessToken, playlistId, targetUris) {
 
     if (moveCount % 50 === 0) {
       console.log(`Moved ${moveCount} tracks...`);
+    }
+
+    if (moveCount >= config.maxMovesPerRun) {
+      console.log(`Stopped after ${moveCount} moves; the next scheduled run will continue reshaping the playlist.`);
+      return;
     }
 
     await sleep(100);
@@ -634,6 +641,17 @@ function readRequiredEnv(name) {
     throw new Error(`Environment variable ${name} still contains a placeholder value.`);
   }
   return value;
+}
+
+function readOptionalNumberEnv(name, fallback) {
+  const value = process.env[name];
+  if (value === undefined || value === "") return fallback;
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`Environment variable ${name} must be a positive number.`);
+  }
+  return Math.floor(parsed);
 }
 
 function loadColorCache() {
