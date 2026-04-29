@@ -1,10 +1,10 @@
 # Spotify Playlist Reorderer
 
-Automatically reorder a Spotify playlist on a schedule. It is designed for GitHub Actions, so it can run every other day without a server or your laptop being on.
+Automatically reorder a Spotify playlist on a schedule. It is designed for GitHub Actions, so it can run every 5 minutes without a server or your laptop being on.
 
 ## What it can do
 
-By default `ORDER_MODE=random-eccentric`, which randomly chooses 1 to 3 of these eccentric methods and applies them as a combined ordering:
+By default `ORDER_MODE=random-eccentric`, which randomly chooses 1 to 3 eccentric methods and applies them as a combined ordering. About one third of random runs include an album-cover colour method when `data/album-colors.json` exists.
 
 - `second-letter-reverse-alpha`: reverse alphabetical by the second alphanumeric character in the title
 - `duration-long-short`: longest, shortest, second longest, second shortest
@@ -26,6 +26,16 @@ By default `ORDER_MODE=random-eccentric`, which randomly chooses 1 to 3 of these
 - `duration-modulo-minute`: sort by how far each track spills into its final minute
 - `added-day-of-week`: Sunday additions through Saturday additions
 - `spotify-id-lottery`: deterministic pseudo-random order from Spotify track IDs
+- `color-rainbow`: album covers by dominant hue
+- `color-reverse-rainbow`: dominant hue in reverse
+- `color-dark-to-light`: darkest album covers first
+- `color-light-to-dark`: brightest album covers first
+- `color-muted-to-vivid`: greyscale-ish covers into vivid covers
+- `color-vivid-to-muted`: vivid covers into muted covers
+- `color-warm-to-cool`: warm reds/yellows into cooler blues/greens
+- `color-cool-to-warm`: cool covers into warm covers
+- `color-contrast-wave`: high contrast, low contrast, and inward
+- `color-complement-hop`: hue buckets offset around the colour wheel
 
 You can also use one method directly:
 
@@ -40,6 +50,17 @@ ORDER_MODE=combo:vowel-density,least-popular-first,duration-long-short npm start
 ```
 
 All data comes from Spotify's Web API playlist and track objects.
+
+## Album-cover colour cache
+
+Colour ordering uses album cover image URLs returned by Spotify. Build or refresh the local cache with:
+
+```bash
+npm install
+npm run colors:build
+```
+
+This writes `data/album-colors.json`, keyed by Spotify album ID. Normal scheduled runs only read this file; they do not download and analyze thousands of images every time.
 
 ## Local setup
 
@@ -103,27 +124,26 @@ SPOTIFY_CLIENT_SECRET
 SPOTIFY_REFRESH_TOKEN
 SPOTIFY_PLAYLIST_ID
 ORDER_MODE
-EVERY_OTHER_DAY_ANCHOR
 ```
 
-`ORDER_MODE` is optional and defaults to `random-eccentric`. `EVERY_OTHER_DAY_ANCHOR` is optional and defaults to `2026-04-29`; change it if you want the every-other-day cadence to start on a different local UK date.
+`ORDER_MODE` is optional and defaults to `random-eccentric`.
 
-The workflow in `.github/workflows/reorder-playlist.yml` wakes at `12:00 UTC` and `13:00 UTC`. The script checks `Europe/London` time and only changes the playlist at `13:00` UK time every other day. This handles both GMT and BST. You can also start it manually from the GitHub Actions tab and pass a one-off ordering mode.
+The workflow in `.github/workflows/reorder-playlist.yml` runs every 5 minutes, which is GitHub Actions' shortest scheduled interval. Spotify rate limits are handled by waiting and retrying when Spotify returns `429`.
 
 If other people fork this project, they should create their own Spotify Developer app and GitHub secrets. Do not share your refresh token.
 
 ## Change the schedule
 
-Edit the cron line and `EVERY_OTHER_DAY_ANCHOR` in `.github/workflows/reorder-playlist.yml`.
+Edit the cron line in `.github/workflows/reorder-playlist.yml`.
 
 Examples:
 
 ```yaml
-# Wake daily at the two UTC hours that can be 13:00 UK time
-- cron: "0 12,13 * * *"
+# Every 5 minutes
+- cron: "*/5 * * * *"
 
-# Wake every day at 13:00 UTC, with no UK daylight-saving correction
-- cron: "0 13 * * *"
+# Every hour
+- cron: "0 * * * *"
 
 # Every 6 hours
 - cron: "0 */6 * * *"
@@ -134,5 +154,5 @@ GitHub Actions cron schedules use UTC.
 ## Notes
 
 - Local Spotify files are skipped because Spotify cannot reorder them through the Web API.
-- The app rewrites the playlist item order with Spotify's replace/add playlist item endpoints.
+- The app rewrites the playlist item order with Spotify's current playlist items endpoints.
 - GitHub scheduled workflows may be delayed during busy periods, which is normal for GitHub Actions.

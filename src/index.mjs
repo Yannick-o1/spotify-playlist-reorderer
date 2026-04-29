@@ -4,8 +4,10 @@ const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE_URL = "https://api.spotify.com/v1";
 const MAX_PAGE_SIZE = 100;
 const MAX_REPLACE_SIZE = 100;
+const COLOR_CACHE_PATH = "data/album-colors.json";
 
 loadDotEnv();
+const colorCache = loadColorCache();
 
 const config = {
   clientId: readRequiredEnv("SPOTIFY_CLIENT_ID"),
@@ -14,11 +16,9 @@ const config = {
   playlistId: normalizePlaylistId(readRequiredEnv("SPOTIFY_PLAYLIST_ID")),
   orderMode: process.env.ORDER_MODE || "random-eccentric",
   orderSeed: process.env.ORDER_SEED || "",
-  scheduleGuard: process.env.SCHEDULE_GUARD === "true",
-  scheduleAnchorDate: process.env.EVERY_OTHER_DAY_ANCHOR || "2026-04-29",
 };
 
-const ECCENTRIC_METHODS = new Map([
+const NON_COLOR_METHODS = new Map([
   ["second-letter-reverse-alpha", secondLetterReverseAlpha],
   ["duration-long-short", durationLongShort],
   ["title-length-long-short", titleLengthLongShort],
@@ -41,6 +41,24 @@ const ECCENTRIC_METHODS = new Map([
   ["spotify-id-lottery", spotifyIdLottery],
 ]);
 
+const COLOR_METHODS = new Map([
+  ["color-rainbow", colorRainbow],
+  ["color-reverse-rainbow", colorReverseRainbow],
+  ["color-dark-to-light", colorDarkToLight],
+  ["color-light-to-dark", colorLightToDark],
+  ["color-muted-to-vivid", colorMutedToVivid],
+  ["color-vivid-to-muted", colorVividToMuted],
+  ["color-warm-to-cool", colorWarmToCool],
+  ["color-cool-to-warm", colorCoolToWarm],
+  ["color-contrast-wave", colorContrastWave],
+  ["color-complement-hop", colorComplementHop],
+]);
+
+const ECCENTRIC_METHODS = new Map([
+  ...NON_COLOR_METHODS,
+  ...COLOR_METHODS,
+]);
+
 const ORDER_MODES = new Map([
   ["random-eccentric", randomEccentricOrder],
   ["random", randomOrder],
@@ -48,11 +66,6 @@ const ORDER_MODES = new Map([
 ]);
 
 async function main() {
-  if (config.scheduleGuard && !shouldRunNow(config.scheduleAnchorDate)) {
-    console.log("Skipping: scheduled runs only apply at 13:00 UK time every other day.");
-    return;
-  }
-
   const accessToken = await refreshAccessToken(config);
   const items = await getPlaylistTracks(accessToken, config.playlistId);
 
@@ -71,7 +84,12 @@ async function main() {
     return;
   }
 
-  await replacePlaylistOrder(accessToken, config.playlistId, reordered.map((item) => item.uri));
+  await replacePlaylistOrder(
+    accessToken,
+    config.playlistId,
+    reordered.map((item) => item.uri),
+    items.map((item) => item.uri),
+  );
   console.log(`Reordered ${reordered.length} tracks with "${plan.name}".`);
 }
 
@@ -97,7 +115,7 @@ async function getPlaylistTracks(accessToken, playlistId) {
   const items = [];
   let nextUrl =
     `${API_BASE_URL}/playlists/${playlistId}/items?limit=${MAX_PAGE_SIZE}` +
-    "&fields=next,items(added_at,item(uri,id,name,duration_ms,explicit,popularity,artists(name),album(name,release_date,release_date_precision)),track(uri,id,name,duration_ms,explicit,popularity,artists(name),album(name,release_date,release_date_precision)))";
+    "&fields=next,items(added_at,item(uri,id,name,duration_ms,explicit,popularity,artists(name),album(id,name,release_date,release_date_precision,images(url,width,height))),track(uri,id,name,duration_ms,explicit,popularity,artists(name),album(id,name,release_date,release_date_precision,images(url,width,height))))";
 
   while (nextUrl) {
     const response = await spotifyFetch(accessToken, nextUrl);
@@ -119,6 +137,9 @@ async function getPlaylistTracks(accessToken, playlistId) {
         popularity: track.popularity ?? 0,
         artists: track.artists || [],
         album: track.album || {},
+        albumId: track.album?.id || "",
+        coverUrl: bestAlbumImage(track.album?.images)?.url || "",
+        color: colorCache[track.album?.id || ""] || null,
         releaseDatePrecision: track.album?.release_date_precision || "",
       });
     }
@@ -129,7 +150,19 @@ async function getPlaylistTracks(accessToken, playlistId) {
   return items;
 }
 
-async function replacePlaylistOrder(accessToken, playlistId, uris) {
+async function replacePlaylistOrder(accessToken, playlistId, uris, restoreUris = []) {
+  try {
+    await writePlaylistOrder(accessToken, playlistId, uris);
+  } catch (error) {
+    if (restoreUris.length > 0) {
+      console.warn(`Playlist update failed; attempting to restore the previous order. Cause: ${error.message}`);
+      await writePlaylistOrder(accessToken, playlistId, restoreUris);
+    }
+    throw error;
+  }
+}
+
+async function writePlaylistOrder(accessToken, playlistId, uris) {
   const [firstChunk, ...remainingChunks] = chunk(uris, MAX_REPLACE_SIZE);
 
   const replaceResponse = await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/items`, {
@@ -138,6 +171,7 @@ async function replacePlaylistOrder(accessToken, playlistId, uris) {
     body: JSON.stringify({ uris: firstChunk }),
   });
   await parseJsonResponse(replaceResponse);
+  await sleep(250);
 
   for (const urisChunk of remainingChunks) {
     const appendResponse = await spotifyFetch(accessToken, `${API_BASE_URL}/playlists/${playlistId}/items`, {
@@ -146,10 +180,11 @@ async function replacePlaylistOrder(accessToken, playlistId, uris) {
       body: JSON.stringify({ uris: urisChunk }),
     });
     await parseJsonResponse(appendResponse);
+    await sleep(250);
   }
 }
 
-async function spotifyFetch(accessToken, url, options = {}) {
+async function spotifyFetch(accessToken, url, options = {}, attempt = 0) {
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -161,7 +196,12 @@ async function spotifyFetch(accessToken, url, options = {}) {
   if (response.status === 429) {
     const retryAfterSeconds = Number(response.headers.get("retry-after") || 1);
     await sleep(retryAfterSeconds * 1000);
-    return spotifyFetch(accessToken, url, options);
+    return spotifyFetch(accessToken, url, options, attempt + 1);
+  }
+
+  if ([500, 502, 503, 504].includes(response.status) && attempt < 5) {
+    await sleep(1000 * 2 ** attempt);
+    return spotifyFetch(accessToken, url, options, attempt + 1);
   }
 
   return response;
@@ -193,31 +233,13 @@ function randomOrder(items, seed) {
 
 function randomEccentricOrder(items, seed) {
   const random = seed ? seededRandom(seed) : Math.random;
-  const methodNames = [...ECCENTRIC_METHODS.keys()];
-  const methodCount = 1 + Math.floor(random() * 3);
-  const selectedNames = [];
-
-  while (selectedNames.length < methodCount) {
-    const candidate = methodNames[Math.floor(random() * methodNames.length)];
-    if (!selectedNames.includes(candidate)) {
-      selectedNames.push(candidate);
-    }
-  }
-
-  return applyMethodChain(items, selectedNames, random);
+  return applyMethodChain(items, selectRandomMethodNames(random), random);
 }
 
 function buildOrderPlan(mode, items, seed) {
   if (mode === "random-eccentric") {
     const random = seed ? seededRandom(seed) : Math.random;
-    const methodNames = [...ECCENTRIC_METHODS.keys()];
-    const methodCount = 1 + Math.floor(random() * 3);
-    const selectedNames = [];
-
-    while (selectedNames.length < methodCount) {
-      const candidate = methodNames[Math.floor(random() * methodNames.length)];
-      if (!selectedNames.includes(candidate)) selectedNames.push(candidate);
-    }
+    const selectedNames = selectRandomMethodNames(random);
 
     return {
       name: `random-eccentric(${selectedNames.join(" + ")})`,
@@ -246,6 +268,24 @@ function buildOrderPlan(mode, items, seed) {
   }
 
   return { name: mode, items: orderer(items, seed) };
+}
+
+function selectRandomMethodNames(random) {
+  const selectedNames = [];
+  const includeColor = COLOR_METHODS.size > 0 && random() < 1 / 3;
+  const methodCount = 1 + Math.floor(random() * 3);
+
+  if (includeColor) {
+    selectedNames.push(randomFrom([...COLOR_METHODS.keys()], random));
+  }
+
+  const pool = [...NON_COLOR_METHODS.keys()];
+  while (selectedNames.length < methodCount) {
+    const candidate = randomFrom(pool, random);
+    if (!selectedNames.includes(candidate)) selectedNames.push(candidate);
+  }
+
+  return selectedNames;
 }
 
 function applyMethodChain(items, selectedNames, random) {
@@ -355,6 +395,46 @@ function spotifyIdLottery(items, seed) {
   return stableSort(items, (a, b) => hashString(`${a.id}${salt}`) - hashString(`${b.id}${salt}`) || compareName(a, b));
 }
 
+function colorRainbow(items) {
+  return colorSort(items, (a, b) => compareMetric(a, b, "dominantHue", "asc") || compareMetric(a, b, "brightness", "asc") || compareName(a, b));
+}
+
+function colorReverseRainbow(items) {
+  return colorSort(items, (a, b) => compareMetric(a, b, "dominantHue", "desc") || compareMetric(a, b, "brightness", "desc") || compareName(a, b));
+}
+
+function colorDarkToLight(items) {
+  return colorSort(items, (a, b) => compareMetric(a, b, "brightness", "asc") || compareMetric(a, b, "saturation", "desc") || compareName(a, b));
+}
+
+function colorLightToDark(items) {
+  return colorSort(items, (a, b) => compareMetric(a, b, "brightness", "desc") || compareMetric(a, b, "saturation", "desc") || compareName(a, b));
+}
+
+function colorMutedToVivid(items) {
+  return colorSort(items, (a, b) => compareMetric(a, b, "colorfulness", "asc") || compareMetric(a, b, "saturation", "asc") || compareName(a, b));
+}
+
+function colorVividToMuted(items) {
+  return colorSort(items, (a, b) => compareMetric(a, b, "colorfulness", "desc") || compareMetric(a, b, "saturation", "desc") || compareName(a, b));
+}
+
+function colorWarmToCool(items) {
+  return colorSort(items, (a, b) => compareMetric(a, b, "warmth", "desc") || compareMetric(a, b, "dominantHue", "asc") || compareName(a, b));
+}
+
+function colorCoolToWarm(items) {
+  return colorSort(items, (a, b) => compareMetric(a, b, "warmth", "asc") || compareMetric(a, b, "dominantHue", "desc") || compareName(a, b));
+}
+
+function colorContrastWave(items) {
+  return alternateFromEnds(colorSort(items, (a, b) => compareMetric(b, a, "contrast", "asc") || compareName(a, b)));
+}
+
+function colorComplementHop(items) {
+  return colorSort(items, (a, b) => compareNumber(complementBucket(a), complementBucket(b)) || compareMetric(a, b, "brightness", "asc") || compareName(a, b));
+}
+
 function compareReleaseDate(a, b) {
   return normalizeReleaseDate(a.album.release_date).localeCompare(normalizeReleaseDate(b.album.release_date));
 }
@@ -448,6 +528,27 @@ function addedWeekday(item) {
   return Number.isNaN(date.getTime()) ? 7 : date.getUTCDay();
 }
 
+function colorSort(items, compare) {
+  const withColor = items.filter((item) => item.color);
+  const withoutColor = items.filter((item) => !item.color);
+  return [...stableSort(withColor, compare), ...stableSort(withoutColor, compareName)];
+}
+
+function compareMetric(a, b, metric, direction = "asc") {
+  const left = Number(a.color?.[metric] ?? 0);
+  const right = Number(b.color?.[metric] ?? 0);
+  return direction === "desc" ? compareNumber(right, left) : compareNumber(left, right);
+}
+
+function compareNumber(a, b) {
+  return a - b;
+}
+
+function complementBucket(item) {
+  const hue = Number(item.color?.dominantHue ?? 0);
+  return Math.round(((hue + 180) % 360) / 30);
+}
+
 function stableSort(items, compare) {
   return items
     .map((item, index) => ({ item, index }))
@@ -481,49 +582,23 @@ function hashString(value) {
   return hash >>> 0;
 }
 
-function shouldRunNow(anchorDate) {
-  const londonNow = londonDateParts(new Date());
-  if (londonNow.hour !== 13) return false;
-
-  const anchor = parseDateOnly(anchorDate);
-  const today = Date.UTC(londonNow.year, londonNow.month - 1, londonNow.day);
-  const daysSinceAnchor = Math.floor((today - anchor) / 86400000);
-
-  return daysSinceAnchor >= 0 && daysSinceAnchor % 2 === 0;
-}
-
-function londonDateParts(date) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-  }).formatToParts(date);
-
-  const part = (type) => Number(parts.find((item) => item.type === type)?.value);
-  return {
-    year: part("year"),
-    month: part("month"),
-    day: part("day"),
-    hour: part("hour"),
-  };
-}
-
-function parseDateOnly(value) {
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) {
-    throw new Error("EVERY_OTHER_DAY_ANCHOR must use YYYY-MM-DD format.");
-  }
-  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-}
-
 function normalizePlaylistId(value) {
   const trimmed = value.trim();
   const urlMatch = trimmed.match(/playlist\/([A-Za-z0-9]+)/);
   const uriMatch = trimmed.match(/spotify:playlist:([A-Za-z0-9]+)/);
   return urlMatch?.[1] || uriMatch?.[1] || trimmed;
+}
+
+function bestAlbumImage(images = []) {
+  return [...images].sort((a, b) => {
+    const aSize = Number(a.width || a.height || 0);
+    const bSize = Number(b.width || b.height || 0);
+    return bSize - aSize;
+  })[0] || null;
+}
+
+function randomFrom(values, random) {
+  return values[Math.floor(random() * values.length)];
 }
 
 function readRequiredEnv(name) {
@@ -535,6 +610,16 @@ function readRequiredEnv(name) {
     throw new Error(`Environment variable ${name} still contains a placeholder value.`);
   }
   return value;
+}
+
+function loadColorCache() {
+  if (!existsSync(COLOR_CACHE_PATH)) return {};
+
+  try {
+    return JSON.parse(readFileSync(COLOR_CACHE_PATH, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read ${COLOR_CACHE_PATH}: ${error.message}`);
+  }
 }
 
 function loadDotEnv() {

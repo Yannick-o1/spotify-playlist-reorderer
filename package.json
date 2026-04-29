@@ -7,10 +7,14 @@
   "scripts": {
     "start": "node src/index.mjs",
     "auth": "node scripts/get-refresh-token.mjs",
-    "check": "node --check src/index.mjs && node --check scripts/get-refresh-token.mjs"
+    "colors:build": "node scripts/build-album-colors.mjs",
+    "check": "node --check src/index.mjs && node --check scripts/get-refresh-token.mjs && node --check scripts/build-album-colors.mjs"
   },
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "sharp": "^0.33.5"
+  }
 }

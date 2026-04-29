@@ -8,9 +8,12 @@ on:
         required: false
         type: string
   schedule:
-    # GitHub cron is UTC. The script only mutates the playlist at 13:00 Europe/London
-    # every other day, so these two UTC hours cover both GMT and BST.
-    - cron: "0 12,13 * * *"
+    # GitHub's shortest scheduled workflow interval is every 5 minutes.
+    - cron: "*/5 * * * *"
+
+concurrency:
+  group: spotify-playlist-reorder
+  cancel-in-progress: false
 
 jobs:
   reorder:
@@ -20,6 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
       - name: Check source
         run: npm run check
       - name: Reorder playlist
@@ -30,6 +36,4 @@ jobs:
           SPOTIFY_PLAYLIST_ID: ${{ secrets.SPOTIFY_PLAYLIST_ID }}
           ORDER_MODE: ${{ inputs.order_mode || secrets.ORDER_MODE || 'random-eccentric' }}
           ORDER_SEED: ${{ secrets.ORDER_SEED }}
-          EVERY_OTHER_DAY_ANCHOR: ${{ secrets.EVERY_OTHER_DAY_ANCHOR || '2026-04-29' }}
-          SCHEDULE_GUARD: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
         run: npm start
