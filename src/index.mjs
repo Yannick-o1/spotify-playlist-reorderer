@@ -528,6 +528,9 @@ function readRequiredEnv(name) {
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
+  if (value.startsWith("your_") || value.endsWith("_or_url")) {
+    throw new Error(`Environment variable ${name} still contains a placeholder value.`);
+  }
   return value;
 }
 
