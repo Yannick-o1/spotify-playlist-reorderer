@@ -96,7 +96,7 @@ async function refreshAccessToken({ clientId, clientSecret, refreshToken }) {
 async function getPlaylistTracks(accessToken, playlistId) {
   const items = [];
   let nextUrl =
-    `${API_BASE_URL}/playlists/${playlistId}/tracks?limit=${MAX_PAGE_SIZE}` +
+    `${API_BASE_URL}/playlists/${playlistId}/items?limit=${MAX_PAGE_SIZE}` +
     "&fields=next,items(added_at,track(uri,id,name,duration_ms,explicit,popularity,artists(name),album(name,release_date,release_date_precision)))";
 
   while (nextUrl) {
