@@ -127,7 +127,7 @@ ORDER_MODE
 MAX_MOVES_PER_RUN
 ```
 
-`ORDER_MODE` is optional and defaults to `random-eccentric`. `MAX_MOVES_PER_RUN` defaults to `40`, which keeps hourly runs conservative with Spotify rate limits.
+`ORDER_MODE` is optional and defaults to `random-eccentric`. `MAX_MOVES_PER_RUN` defaults to `120`, which moves the playlist faster while still bounding Spotify write calls per run.
 
 The workflow in `.github/workflows/reorder-playlist.yml` runs hourly. Spotify rate limits are handled by waiting and retrying when Spotify returns `429`.
 

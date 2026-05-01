@@ -4,7 +4,7 @@ const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE_URL = "https://api.spotify.com/v1";
 const MAX_PAGE_SIZE = 100;
 const COLOR_CACHE_PATH = "data/album-colors.json";
-const DEFAULT_MAX_MOVES_PER_RUN = 40;
+const DEFAULT_MAX_MOVES_PER_RUN = 120;
 
 loadDotEnv();
 const colorCache = loadColorCache();

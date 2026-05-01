@@ -36,5 +36,5 @@ jobs:
           SPOTIFY_PLAYLIST_ID: ${{ secrets.SPOTIFY_PLAYLIST_ID }}
           ORDER_MODE: ${{ inputs.order_mode || secrets.ORDER_MODE || 'random-eccentric' }}
           ORDER_SEED: ${{ secrets.ORDER_SEED }}
-          MAX_MOVES_PER_RUN: ${{ secrets.MAX_MOVES_PER_RUN || '40' }}
+          MAX_MOVES_PER_RUN: ${{ secrets.MAX_MOVES_PER_RUN || '120' }}
         run: npm start
