@@ -7,7 +7,7 @@ on:
     - cron: "17 1 * * *"
 
 concurrency:
-  group: spotify-playlist-reorder
+  group: spotify-stuff-v2
   cancel-in-progress: false
 
 jobs:
@@ -22,8 +22,8 @@ jobs:
         run: npm run check
       - name: Reorder playlist
         env:
-          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
-          SPOTIFY_PLAYLIST_ID: ${{ secrets.SPOTIFY_PLAYLIST_ID }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.STUFF_SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.STUFF_SPOTIFY_CLIENT_SECRET }}
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.STUFF_SPOTIFY_REFRESH_TOKEN }}
+          SPOTIFY_PLAYLIST_ID: ${{ secrets.STUFF_SPOTIFY_PLAYLIST_ID }}
         run: npm start
