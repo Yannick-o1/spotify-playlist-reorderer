@@ -1,10 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
-import { buildOrderPlan } from "./order.mjs";
+import { buildOrderPlan, createSeededRandomInt } from "./order.mjs";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE_URL = "https://api.spotify.com/v1";
 const MAX_PAGE_SIZE = 50;
 const MIN_WRITE_INTERVAL_MS = 350;
+const MAX_MOVES_PER_RUN = 600;
+const MAX_RETRY_AFTER_SECONDS = 300;
+const ORDER_CYCLE_EPOCH_DAY = 20660; // 2026-07-26 UTC
 const PINNED_ITEM_URIS = [
   "spotify:track:2USTVgd20XRLMAhiYNklN8", // Livin' Loose — George Clanton
   "spotify:track:5ju3Mgd15jLIAmZLwLPlwY", // Know by Heart — The American Analog Set
@@ -36,25 +39,32 @@ async function main() {
     return;
   }
 
-  const plan = buildOrderPlan(items, PINNED_ITEM_URIS);
+  const cycleNumber = getOrderCycleNumber();
+  const randomInt = createSeededRandomInt(`stuff-v1:${cycleNumber}`);
+  const plan = buildOrderPlan(items, PINNED_ITEM_URIS, randomInt);
   const currentKeys = items.map((item) => item.key);
   const targetKeys = plan.items.map((item) => item.key);
 
-  console.log(`Selected ${plan.name} ordering for this run.`);
+  console.log(`Selected ${plan.name} ordering for three-day cycle ${cycleNumber}.`);
 
   if (currentKeys.every((key, index) => key === targetKeys[index])) {
     console.log("The playlist already matches the selected order; no update needed.");
     return;
   }
 
-  const moveCount = await applyPlaylistOrder(
+  const result = await applyPlaylistOrder(
     accessToken,
     config.playlistId,
     currentKeys,
     targetKeys,
     snapshotAfterRead,
   );
-  console.log(`Reordered ${items.length} items with ${moveCount} move${moveCount === 1 ? "" : "s"}.`);
+
+  if (result.complete) {
+    console.log(`Reordered ${items.length} items with ${result.moveCount} move${result.moveCount === 1 ? "" : "s"}.`);
+  } else {
+    console.log(`Paused safely after ${result.moveCount} moves; the next daily run will continue cycle ${cycleNumber}.`);
+  }
 }
 
 async function refreshAccessToken({ clientId, clientSecret, refreshToken }) {
@@ -91,6 +101,7 @@ async function getPlaylistSnapshotId(accessToken, playlistId) {
 
 async function getPlaylistItems(accessToken, playlistId) {
   const items = [];
+  const occurrenceCounts = new Map();
   let nextUrl =
     `${API_BASE_URL}/playlists/${playlistId}/items?limit=${MAX_PAGE_SIZE}` +
     "&fields=next,items(added_at,item(uri),track(uri))";
@@ -101,11 +112,16 @@ async function getPlaylistItems(accessToken, playlistId) {
 
     for (const playlistItem of page.items || []) {
       const item = playlistItem.item || playlistItem.track;
+      const uri = item?.uri || "";
+      const addedAt = playlistItem.added_at || "";
+      const identity = JSON.stringify([uri, addedAt]);
+      const occurrence = occurrenceCounts.get(identity) || 0;
+      occurrenceCounts.set(identity, occurrence + 1);
 
       items.push({
-        key: items.length,
-        uri: item?.uri || "",
-        addedAt: playlistItem.added_at || "",
+        key: `${identity}:${occurrence}`,
+        uri,
+        addedAt,
       });
     }
 
@@ -152,10 +168,15 @@ async function applyPlaylistOrder(accessToken, playlistId, currentKeys, targetKe
       console.log(`Moved ${moveCount} items...`);
     }
 
+    if (moveCount >= MAX_MOVES_PER_RUN) {
+      const complete = currentKeys.every((key, index) => key === targetKeys[index]);
+      return { moveCount, complete };
+    }
+
     await sleep(MIN_WRITE_INTERVAL_MS);
   }
 
-  return moveCount;
+  return { moveCount, complete: true };
 }
 
 async function spotifyFetch(accessToken, url, options = {}, serverErrorAttempt = 0) {
@@ -169,6 +190,11 @@ async function spotifyFetch(accessToken, url, options = {}, serverErrorAttempt =
 
   if (response.status === 429) {
     const retryAfterSeconds = Math.max(1, Number(response.headers.get("retry-after")) || 1);
+
+    if (retryAfterSeconds > MAX_RETRY_AFTER_SECONDS) {
+      throw new Error(`Spotify quota reached; retry after ${retryAfterSeconds} seconds. A later daily run will continue the same order.`);
+    }
+
     console.log(`Spotify rate limit reached; retrying in ${retryAfterSeconds} second${retryAfterSeconds === 1 ? "" : "s"}.`);
     await sleep(retryAfterSeconds * 1000);
     return spotifyFetch(accessToken, url, options, serverErrorAttempt);
@@ -199,6 +225,11 @@ function normalizePlaylistId(value) {
   const urlMatch = trimmed.match(/playlist\/([A-Za-z0-9]+)/);
   const uriMatch = trimmed.match(/spotify:playlist:([A-Za-z0-9]+)/);
   return urlMatch?.[1] || uriMatch?.[1] || trimmed;
+}
+
+function getOrderCycleNumber() {
+  const currentUtcDay = Math.floor(Date.now() / 86400000);
+  return Math.floor((currentUtcDay - ORDER_CYCLE_EPOCH_DAY) / 3);
 }
 
 function readRequiredEnv(name) {

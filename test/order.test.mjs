@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildOrderPlan,
+  createSeededRandomInt,
   randomOrder,
   reverseChronologicalOrder,
 } from "../src/order.mjs";
@@ -88,5 +89,38 @@ test("buildOrderPlan fails safely when a pinned item is absent", () => {
   assert.throws(
     () => buildOrderPlan(ITEMS, ["spotify:track:missing"], () => 0),
     /Pinned Spotify item is missing/,
+  );
+});
+
+test("seeded random choices are deterministic and stay within bounds", () => {
+  const first = createSeededRandomInt("cycle-42");
+  const second = createSeededRandomInt("cycle-42");
+  const firstSequence = [first(2), first(7), first(1400), first(2)];
+  const secondSequence = [second(2), second(7), second(1400), second(2)];
+
+  assert.deepEqual(firstSequence, secondSequence);
+  assert.ok(firstSequence.every((value, index) => value >= 0 && value < [2, 7, 1400, 2][index]));
+});
+
+test("the active cycle continues the reverse-chronological target already in progress", () => {
+  assert.equal(createSeededRandomInt("stuff-v1:0")(2), 0);
+});
+
+test("the same cycle produces the same target from a partially reordered playlist", () => {
+  const items = [
+    { key: "c", uri: "spotify:track:c", addedAt: "2024-01-01T00:00:00Z" },
+    { key: "a", uri: "spotify:track:a", addedAt: "2025-01-01T00:00:00Z" },
+    { key: "d", uri: "spotify:track:d", addedAt: "2023-01-01T00:00:00Z" },
+    { key: "b", uri: "spotify:track:b", addedAt: "2026-01-01T00:00:00Z" },
+  ];
+  const partiallyReordered = [items[1], items[3], items[0], items[2]];
+
+  const firstPlan = buildOrderPlan(items, [], createSeededRandomInt("same-cycle"));
+  const resumedPlan = buildOrderPlan(partiallyReordered, [], createSeededRandomInt("same-cycle"));
+
+  assert.equal(firstPlan.name, resumedPlan.name);
+  assert.deepEqual(
+    firstPlan.items.map((item) => item.key),
+    resumedPlan.items.map((item) => item.key),
   );
 });

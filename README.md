@@ -7,12 +7,14 @@ Automatically reorder the Spotify playlist **Stuff** every three days with GitHu
 3. I Can Change — LCD Soundsystem
 4. Dayvan Cowboy — Boards of Canada
 
-Each run makes an unbiased 50/50 choice for every remaining playlist item:
+Each three-day cycle makes an unbiased 50/50 choice for every remaining playlist item:
 
 - **Reverse chronological:** newest playlist additions first, based on Spotify's `added_at` timestamp.
 - **Random:** a fresh Fisher–Yates shuffle of every playlist item.
 
-The script moves items in place instead of clearing and rebuilding the playlist, preserving local and unavailable entries. It uses Spotify snapshot IDs so a concurrent playlist edit causes a safe failure instead of reordering stale positions. Writes are deliberately throttled and Spotify `Retry-After` responses are honored.
+The script moves items in place instead of clearing and rebuilding the playlist, preserving local and unavailable entries. It uses Spotify snapshot IDs so a concurrent playlist edit causes a safe failure instead of reordering stale positions.
+
+Spotify applies a daily-style write quota to this playlist. To stay below the measured limit, the script makes at most 600 moves per daily run. Every run within the same three-day cycle reconstructs exactly the same target, so a partial reorder resumes instead of choosing a conflicting new shuffle. With 1,403 playlist items, the target completes within the three-day cycle. Short `Retry-After` responses are honored; a long quota reset exits cleanly for the next daily continuation.
 
 ## Requirements
 
@@ -45,7 +47,7 @@ Run the shuffler with:
 npm start
 ```
 
-The console reports which of the two orderings was selected.
+The console reports the three-day cycle, selected ordering, progress, and whether another daily continuation is needed.
 
 ## Get a Spotify refresh token
 
@@ -79,7 +81,7 @@ SPOTIFY_REFRESH_TOKEN
 SPOTIFY_PLAYLIST_ID
 ```
 
-The workflow in `.github/workflows/shuffle-stuff.yml` checks once per day at 00:17 UTC and uses a date-independent cadence gate to run exactly every third UTC day. It can also be triggered manually from the Actions tab. Scheduled GitHub workflows can be delayed during busy periods.
+The workflow in `.github/workflows/shuffle-stuff.yml` runs daily at 01:17 UTC. It creates a new target only once every three days; daily runs are continuations required to stay within Spotify's quota, and become no-ops as soon as that cycle's target is complete. It can also be triggered manually from the Actions tab. Scheduled GitHub workflows can be delayed during busy periods.
 
 To change the schedule, edit its cron expression. GitHub Actions cron schedules use UTC.
 
@@ -91,4 +93,4 @@ Run the syntax checks and ordering tests with:
 npm run check
 ```
 
-Spotify rate limits are handled by waiting for the server's retry interval. Temporary Spotify server errors are retried with exponential backoff.
+Short Spotify rate limits are handled by waiting for the server's retry interval. Long daily quota resets are deferred to the next scheduled continuation. Temporary Spotify server errors are retried with exponential backoff.
