@@ -1,4 +1,4 @@
-name: Reorder Spotify playlist
+name: Shuffle Stuff every three days
 
 on:
   workflow_dispatch:
