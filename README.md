@@ -33,11 +33,13 @@ cp .env.example .env
 Fill in these four values in `.env`:
 
 ```text
-SPOTIFY_CLIENT_ID
-SPOTIFY_CLIENT_SECRET
-SPOTIFY_REFRESH_TOKEN
-SPOTIFY_PLAYLIST_ID
+STUFF_SPOTIFY_CLIENT_ID
+STUFF_SPOTIFY_CLIENT_SECRET
+STUFF_SPOTIFY_REFRESH_TOKEN
+STUFF_SPOTIFY_PLAYLIST_ID
 ```
+
+The `STUFF_` prefix isolates this production workflow from obsolete or queued historical runs. The workflow maps these repository secrets to the unprefixed environment variables expected by the local script.
 
 `SPOTIFY_PLAYLIST_ID` can be a raw ID, a Spotify playlist URL, or a `spotify:playlist:` URI.
 
