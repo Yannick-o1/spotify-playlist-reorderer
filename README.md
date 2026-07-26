@@ -79,7 +79,7 @@ SPOTIFY_REFRESH_TOKEN
 SPOTIFY_PLAYLIST_ID
 ```
 
-The workflow in `.github/workflows/reorder-playlist.yml` checks once per day at 00:17 UTC and uses a date-independent cadence gate to run exactly every third UTC day. It can also be triggered manually from the Actions tab. Scheduled GitHub workflows can be delayed during busy periods.
+The workflow in `.github/workflows/shuffle-stuff.yml` checks once per day at 00:17 UTC and uses a date-independent cadence gate to run exactly every third UTC day. It can also be triggered manually from the Actions tab. Scheduled GitHub workflows can be delayed during busy periods.
 
 To change the schedule, edit its cron expression. GitHub Actions cron schedules use UTC.
 
