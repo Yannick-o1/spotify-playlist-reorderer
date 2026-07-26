@@ -2,14 +2,9 @@ name: Reorder Spotify playlist
 
 on:
   workflow_dispatch:
-    inputs:
-      order_mode:
-        description: "Override ORDER_MODE for this run"
-        required: false
-        type: string
   schedule:
-    # Hourly. GitHub cron is UTC and scheduled runs can be delayed under load.
-    - cron: "0 * * * *"
+    # Check daily at 00:17 UTC; the cadence gate runs the shuffler every third day.
+    - cron: "17 0 * * *"
 
 concurrency:
   group: spotify-playlist-reorder
@@ -19,22 +14,32 @@ jobs:
   reorder:
     runs-on: ubuntu-latest
     steps:
+      - name: Check three-day cadence
+        id: cadence
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          day_number=$(( $(date -u +%s) / 86400 ))
+          if [[ "$EVENT_NAME" == "workflow_dispatch" || $(( day_number % 3 )) -eq 2 ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Not a scheduled run day."
+          fi
       - uses: actions/checkout@v4
+        if: steps.cadence.outputs.run == 'true'
       - uses: actions/setup-node@v4
+        if: steps.cadence.outputs.run == 'true'
         with:
           node-version: "20"
-          cache: "npm"
-      - name: Install dependencies
-        run: npm ci
       - name: Check source
+        if: steps.cadence.outputs.run == 'true'
         run: npm run check
       - name: Reorder playlist
+        if: steps.cadence.outputs.run == 'true'
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
           SPOTIFY_PLAYLIST_ID: ${{ secrets.SPOTIFY_PLAYLIST_ID }}
-          ORDER_MODE: ${{ inputs.order_mode || secrets.ORDER_MODE || 'random-eccentric' }}
-          ORDER_SEED: ${{ secrets.ORDER_SEED }}
-          MAX_MOVES_PER_RUN: ${{ secrets.MAX_MOVES_PER_RUN || '120' }}
         run: npm start
