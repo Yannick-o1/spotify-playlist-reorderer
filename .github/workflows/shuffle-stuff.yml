@@ -3,8 +3,8 @@ name: Shuffle Stuff every three days
 on:
   workflow_dispatch:
   schedule:
-    # Check daily at 00:17 UTC; the cadence gate runs the shuffler every third day.
-    - cron: "17 0 * * *"
+    # Daily continuations finish one new three-day target within Spotify's write quota.
+    - cron: "17 1 * * *"
 
 concurrency:
   group: spotify-playlist-reorder
@@ -14,29 +14,13 @@ jobs:
   reorder:
     runs-on: ubuntu-latest
     steps:
-      - name: Check three-day cadence
-        id: cadence
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          day_number=$(( $(date -u +%s) / 86400 ))
-          if [[ "$EVENT_NAME" == "workflow_dispatch" || $(( day_number % 3 )) -eq 2 ]]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Not a scheduled run day."
-          fi
       - uses: actions/checkout@v4
-        if: steps.cadence.outputs.run == 'true'
       - uses: actions/setup-node@v4
-        if: steps.cadence.outputs.run == 'true'
         with:
           node-version: "20"
       - name: Check source
-        if: steps.cadence.outputs.run == 'true'
         run: npm run check
       - name: Reorder playlist
-        if: steps.cadence.outputs.run == 'true'
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}

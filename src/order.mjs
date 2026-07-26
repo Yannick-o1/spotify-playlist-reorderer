@@ -1,29 +1,29 @@
-import { randomInt as cryptoRandomInt } from "node:crypto";
+import { createHash, randomInt as cryptoRandomInt } from "node:crypto";
 
 export function buildOrderPlan(items, pinnedUris = [], randomInt = cryptoRandomInt) {
   const { pinnedItems, remainingItems } = extractPinnedItems(items, pinnedUris);
+  const canonicalItems = [...remainingItems].sort((left, right) =>
+    String(left.key).localeCompare(String(right.key)),
+  );
 
   if (randomInt(2) === 0) {
     return {
       name: "reverse-chronological",
-      items: [...pinnedItems, ...reverseChronologicalOrder(remainingItems)],
+      items: [...pinnedItems, ...reverseChronologicalOrder(canonicalItems)],
     };
   }
 
   return {
     name: "random",
-    items: [...pinnedItems, ...randomOrder(remainingItems, randomInt)],
+    items: [...pinnedItems, ...randomOrder(canonicalItems, randomInt)],
   };
 }
 
 export function reverseChronologicalOrder(items) {
-  return items
-    .map((item, index) => ({ item, index }))
-    .sort((left, right) => {
-      const dateDifference = parseAddedAt(right.item.addedAt) - parseAddedAt(left.item.addedAt);
-      return dateDifference || left.index - right.index;
-    })
-    .map(({ item }) => item);
+  return [...items].sort((left, right) => {
+    const dateDifference = parseAddedAt(right.addedAt) - parseAddedAt(left.addedAt);
+    return dateDifference || String(left.key).localeCompare(String(right.key));
+  });
 }
 
 export function randomOrder(items, randomInt = cryptoRandomInt) {
@@ -35,6 +35,31 @@ export function randomOrder(items, randomInt = cryptoRandomInt) {
   }
 
   return shuffled;
+}
+
+export function createSeededRandomInt(seed) {
+  let counter = 0;
+
+  return (upperBound) => {
+    if (!Number.isSafeInteger(upperBound) || upperBound < 1) {
+      throw new Error("Random upper bound must be a positive safe integer.");
+    }
+
+    const range = 0x100000000;
+    const unbiasedLimit = range - (range % upperBound);
+
+    while (true) {
+      const digest = createHash("sha256")
+        .update(`${seed}:${counter}`)
+        .digest();
+      counter += 1;
+      const value = digest.readUInt32BE(0);
+
+      if (value < unbiasedLimit) {
+        return value % upperBound;
+      }
+    }
+  };
 }
 
 function extractPinnedItems(items, pinnedUris) {
