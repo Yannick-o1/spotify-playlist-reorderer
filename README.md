@@ -1,11 +1,20 @@
-# Spotify Shuffler
+# Spotify Playlist Reorderer
 
-Automatically reorder the Spotify playlist **Stuff** every three days with GitHub Actions. The first four tracks always remain at the top in this exact order:
+Automatically reorder the Spotify playlists **Stuff** and **Other stuff** every three days with GitHub Actions.
+
+The first four tracks in **Stuff** always remain at the top in this exact order:
 
 1. Livin' Loose — George Clanton
 2. Know by Heart — The American Analog Set
 3. I Can Change — LCD Soundsystem
 4. Dayvan Cowboy — Boards of Canada
+
+The first four tracks in **Other stuff** always remain at the top in this exact order:
+
+1. Spring 1 - 2022 — Max Richter, Elena Urioste, Chineke! Orchestra
+2. Someone Close — Floating Points
+3. She Just Likes to Fight — Four Tet
+4. Feio (feat. Wayne Shorter, John McLaughlin, Chick Corea, Joe Zawinul & Dave Holland) — Miles Davis and featured artists
 
 Each three-day cycle makes an unbiased 50/50 choice for every remaining playlist item:
 
@@ -14,7 +23,7 @@ Each three-day cycle makes an unbiased 50/50 choice for every remaining playlist
 
 The script moves items in place instead of clearing and rebuilding the playlist, preserving local and unavailable entries. It uses Spotify snapshot IDs so a concurrent playlist edit causes a safe failure instead of reordering stale positions.
 
-Spotify applies a daily-style write quota to this playlist. To stay below the measured limit, the script makes at most 600 moves per daily run. Every run within the same three-day cycle reconstructs exactly the same target, so a partial reorder resumes instead of choosing a conflicting new shuffle. With 1,403 playlist items, the target completes within the three-day cycle. Short `Retry-After` responses are honored; a long quota reset exits cleanly for the next daily continuation.
+Spotify applies an account/app-wide daily-style write quota. To stay below the measured limit, the workflows share a conservative 570-move daily budget: at most 470 moves for Stuff and 100 for Other stuff. Every run within the same three-day cycle reconstructs exactly the same playlist-specific target, so a partial reorder resumes instead of choosing a conflicting new shuffle. Those caps are sufficient to finish both playlists within each three-day cycle. Short `Retry-After` responses are honored; a long quota reset exits cleanly for the next daily continuation.
 
 ## Requirements
 
@@ -33,15 +42,23 @@ cp .env.example .env
 Fill in these four values in `.env`:
 
 ```text
-STUFF_SPOTIFY_CLIENT_ID
-STUFF_SPOTIFY_CLIENT_SECRET
-STUFF_SPOTIFY_REFRESH_TOKEN
-STUFF_SPOTIFY_PLAYLIST_ID
+SPOTIFY_CLIENT_ID
+SPOTIFY_CLIENT_SECRET
+SPOTIFY_REFRESH_TOKEN
+SPOTIFY_PLAYLIST_ID
 ```
 
-The `STUFF_` prefix isolates this production workflow from obsolete or queued historical runs. The workflow maps these repository secrets to the unprefixed environment variables expected by the local script.
-
 `SPOTIFY_PLAYLIST_ID` can be a raw ID, a Spotify playlist URL, or a `spotify:playlist:` URI.
+
+Optional settings select the pinned prefix, stable three-day shuffle seed, and quota budget:
+
+```text
+PINNED_ITEM_URIS=spotify:track:first,spotify:track:second
+ORDER_SEED_PREFIX=my-playlist-v1
+MAX_MOVES_PER_RUN=100
+```
+
+When omitted, these retain the Stuff production defaults.
 
 Run the shuffler with:
 
@@ -74,16 +91,25 @@ Treat the refresh token like a password and never commit it.
 
 ## GitHub Actions setup
 
-In the GitHub repository, open `Settings → Secrets and variables → Actions` and add these repository secrets:
+The two workflows use isolated secret names so obsolete or queued workflow versions cannot act on either playlist. Add these repository secrets for Stuff:
 
 ```text
-SPOTIFY_CLIENT_ID
-SPOTIFY_CLIENT_SECRET
-SPOTIFY_REFRESH_TOKEN
-SPOTIFY_PLAYLIST_ID
+STUFF_SPOTIFY_CLIENT_ID
+STUFF_SPOTIFY_CLIENT_SECRET
+STUFF_SPOTIFY_REFRESH_TOKEN
+STUFF_SPOTIFY_PLAYLIST_ID
 ```
 
-The workflow in `.github/workflows/shuffle-stuff.yml` runs daily at 01:17 UTC. It creates a new target only once every three days; daily runs are continuations required to stay within Spotify's quota, and become no-ops as soon as that cycle's target is complete. It can also be triggered manually from the Actions tab. Scheduled GitHub workflows can be delayed during busy periods.
+Add the same credentials and the Other stuff playlist ID under:
+
+```text
+OTHER_STUFF_SPOTIFY_CLIENT_ID
+OTHER_STUFF_SPOTIFY_CLIENT_SECRET
+OTHER_STUFF_SPOTIFY_REFRESH_TOKEN
+OTHER_STUFF_SPOTIFY_PLAYLIST_ID
+```
+
+`shuffle-stuff.yml` runs daily at 01:17 UTC with a 470-move cap. `shuffle-other-stuff.yml` runs daily at 03:17 UTC with a 100-move cap, after the Stuff job has finished. Each creates a new 50/50 target only once every three days; daily runs are continuations required to stay within Spotify's shared quota and become no-ops as soon as that cycle's target is complete. Both can also be triggered manually from the Actions tab. Scheduled GitHub workflows can be delayed during busy periods.
 
 To change the schedule, edit its cron expression. GitHub Actions cron schedules use UTC.
 
