@@ -1,124 +1,77 @@
-# Spotify Playlist Reorderer
+# spot shuffle
 
-Automatically reorder the Spotify playlists **Stuff** and **Other stuff** every three days with GitHub Actions.
+spot shuffle reorders spotify playlists on a repeating three-day cycle while keeping a configurable group of tracks pinned at the top.
 
-The first four tracks in **Stuff** always remain at the top in this exact order:
+each cycle makes an unbiased 50/50 choice for every unpinned playlist item:
 
-1. Livin' Loose — George Clanton
-2. Know by Heart — The American Analog Set
-3. I Can Change — LCD Soundsystem
-4. Dayvan Cowboy — Boards of Canada
+- **reverse chronological:** newest playlist additions first, based on the `added_at` timestamp
+- **random:** a fresh fisher–yates shuffle of every playlist item
 
-The first four tracks in **Other stuff** always remain at the top in this exact order:
+the script moves items in place instead of clearing and rebuilding the playlist, preserving local and unavailable entries. spotify snapshot ids ensure that a concurrent playlist edit causes a safe failure instead of reordering stale positions.
 
-1. Spring 1 - 2022 — Max Richter, Elena Urioste, Chineke! Orchestra
-2. Someone Close — Floating Points
-3. She Just Likes to Fight — Four Tet
-4. Feio (feat. Wayne Shorter, John McLaughlin, Chick Corea, Joe Zawinul & Dave Holland) — Miles Davis and featured artists
+every run in the same three-day cycle reconstructs the same deterministic target. if spotify's write quota stops a run early, the next daily run resumes that target instead of choosing a conflicting order. the included workflows use staggered schedules and a combined limit of 570 moves per day to leave headroom beneath the measured shared quota.
 
-Each three-day cycle makes an unbiased 50/50 choice for every remaining playlist item:
+## requirements
 
-- **Reverse chronological:** newest playlist additions first, based on Spotify's `added_at` timestamp.
-- **Random:** a fresh Fisher–Yates shuffle of every playlist item.
+- node.js 20 or newer
+- a spotify app from the [spotify developer dashboard](https://developer.spotify.com/dashboard)
+- a playlist owned by the spotify account that authorizes the app
 
-The script moves items in place instead of clearing and rebuilding the playlist, preserving local and unavailable entries. It uses Spotify snapshot IDs so a concurrent playlist edit causes a safe failure instead of reordering stale positions.
+## local setup
 
-Spotify applies an account/app-wide daily-style write quota. To stay below the measured limit, the workflows share a conservative 570-move daily budget: at most 470 moves for Stuff and 100 for Other stuff. Every run within the same three-day cycle reconstructs exactly the same playlist-specific target, so a partial reorder resumes instead of choosing a conflicting new shuffle. Those caps are sufficient to finish both playlists within each three-day cycle. Short `Retry-After` responses are honored; a long quota reset exits cleanly for the next daily continuation.
-
-## Requirements
-
-- Node.js 20 or newer
-- A Spotify app from the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-- A playlist owned by the Spotify account that authorizes the app
-
-## Local setup
-
-Create a local environment file:
+create a local environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in these four values in `.env`:
+replace each placeholder in `.env` with the corresponding spotify app credentials, refresh token, and playlist id. the playlist id can be a raw id, a spotify playlist url, or a `spotify:playlist:` uri.
 
-```text
-SPOTIFY_CLIENT_ID
-SPOTIFY_CLIENT_SECRET
-SPOTIFY_REFRESH_TOKEN
-SPOTIFY_PLAYLIST_ID
-```
+the optional workflow settings control the pinned track uris, stable cycle seed, and maximum moves per run. production workflows provide these settings separately for each playlist.
 
-`SPOTIFY_PLAYLIST_ID` can be a raw ID, a Spotify playlist URL, or a `spotify:playlist:` URI.
-
-Optional settings select the pinned prefix, stable three-day shuffle seed, and quota budget:
-
-```text
-PINNED_ITEM_URIS=spotify:track:first,spotify:track:second
-ORDER_SEED_PREFIX=my-playlist-v1
-MAX_MOVES_PER_RUN=100
-```
-
-When omitted, these retain the Stuff production defaults.
-
-Run the shuffler with:
+run the reorderer with:
 
 ```bash
 npm start
 ```
 
-The console reports the three-day cycle, selected ordering, progress, and whether another daily continuation is needed.
+the console reports the current three-day cycle, selected ordering, progress, and whether another daily continuation is needed.
 
-## Get a Spotify refresh token
+## get a spotify refresh token
 
-1. In your Spotify app settings, add this redirect URI:
+1. add this redirect uri in the spotify app settings:
 
    ```text
    http://127.0.0.1:8888/callback
    ```
 
-2. Put `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env`.
-3. Run `npm run auth`.
-4. Open the printed authorization URL and approve access.
-5. Copy the refresh token printed in the terminal into `.env` or your GitHub secrets.
+2. add the app client id and client secret to `.env`.
+3. run `npm run auth`.
+4. open the printed authorization url and approve access.
+5. copy the printed refresh token into `.env` or the repository secrets.
 
-The helper requests these scopes:
+the helper requests these scopes:
 
 ```text
 playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public
 ```
 
-Treat the refresh token like a password and never commit it.
+treat the refresh token like a password and never commit it.
 
-## GitHub Actions setup
+## github actions setup
 
-The two workflows use isolated secret names so obsolete or queued workflow versions cannot act on either playlist. Add these repository secrets for Stuff:
+the repository includes two isolated workflows under `.github/workflows`. each workflow uses its own secret names, playlist-specific pinned prefix, deterministic seed, schedule, and move limit.
 
-```text
-STUFF_SPOTIFY_CLIENT_ID
-STUFF_SPOTIFY_CLIENT_SECRET
-STUFF_SPOTIFY_REFRESH_TOKEN
-STUFF_SPOTIFY_PLAYLIST_ID
-```
+the larger workflow runs daily at 01:17 utc with a 470-move cap. the smaller workflow runs daily at 03:17 utc with a 100-move cap. each creates a new 50/50 target only once every three days; the daily executions are quota-safe continuations and become no-ops after the target is complete.
 
-Add the same credentials and the Other stuff playlist ID under:
+both workflows can also be triggered manually from the actions tab. scheduled github workflows can be delayed during busy periods. cron schedules use utc.
 
-```text
-OTHER_STUFF_SPOTIFY_CLIENT_ID
-OTHER_STUFF_SPOTIFY_CLIENT_SECRET
-OTHER_STUFF_SPOTIFY_REFRESH_TOKEN
-OTHER_STUFF_SPOTIFY_PLAYLIST_ID
-```
+## verification
 
-`shuffle-stuff.yml` runs daily at 01:17 UTC with a 470-move cap. `shuffle-other-stuff.yml` runs daily at 03:17 UTC with a 100-move cap, after the Stuff job has finished. Each creates a new 50/50 target only once every three days; daily runs are continuations required to stay within Spotify's shared quota and become no-ops as soon as that cycle's target is complete. Both can also be triggered manually from the Actions tab. Scheduled GitHub workflows can be delayed during busy periods.
-
-To change the schedule, edit its cron expression. GitHub Actions cron schedules use UTC.
-
-## Verification
-
-Run the syntax checks and ordering tests with:
+run the syntax checks and ordering tests with:
 
 ```bash
 npm run check
 ```
 
-Short Spotify rate limits are handled by waiting for the server's retry interval. Long daily quota resets are deferred to the next scheduled continuation. Temporary Spotify server errors are retried with exponential backoff.
+short spotify rate limits are handled by waiting for the server's retry interval. long quota resets are deferred to the next scheduled continuation. temporary spotify server errors are retried with exponential backoff.
