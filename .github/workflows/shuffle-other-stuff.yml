@@ -1,0 +1,32 @@
+name: Shuffle Other stuff every three days
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Daily continuations finish one new three-day target within Spotify's shared write quota.
+    - cron: "17 3 * * *"
+
+concurrency:
+  group: spotify-other-stuff-v1
+  cancel-in-progress: false
+
+jobs:
+  reorder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check source
+        run: npm run check
+      - name: Reorder playlist
+        env:
+          SPOTIFY_CLIENT_ID: ${{ secrets.OTHER_STUFF_SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.OTHER_STUFF_SPOTIFY_CLIENT_SECRET }}
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.OTHER_STUFF_SPOTIFY_REFRESH_TOKEN }}
+          SPOTIFY_PLAYLIST_ID: ${{ secrets.OTHER_STUFF_SPOTIFY_PLAYLIST_ID }}
+          MAX_MOVES_PER_RUN: "100"
+          ORDER_SEED_PREFIX: "other-stuff-v1"
+          PINNED_ITEM_URIS: "spotify:track:37bI12CYrLLYIeI8NtBp1k,spotify:track:1AhYmMPEM7UKVSrKC7sfSO,spotify:track:2dxtGo6FGs3Hxyv73tDsx7,spotify:track:7DpXEh9OAJ90AxIiBMr6Gt"
+        run: npm start

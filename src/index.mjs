@@ -5,10 +5,9 @@ const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE_URL = "https://api.spotify.com/v1";
 const MAX_PAGE_SIZE = 50;
 const MIN_WRITE_INTERVAL_MS = 350;
-const MAX_MOVES_PER_RUN = 600;
 const MAX_RETRY_AFTER_SECONDS = 300;
 const ORDER_CYCLE_EPOCH_DAY = 20660; // 2026-07-26 UTC
-const PINNED_ITEM_URIS = [
+const DEFAULT_PINNED_ITEM_URIS = [
   "spotify:track:2USTVgd20XRLMAhiYNklN8", // Livin' Loose — George Clanton
   "spotify:track:5ju3Mgd15jLIAmZLwLPlwY", // Know by Heart — The American Analog Set
   "spotify:track:2073QOEC8rBtSyTsRyaWiP", // I Can Change — LCD Soundsystem
@@ -22,6 +21,9 @@ const config = {
   clientSecret: readRequiredEnv("SPOTIFY_CLIENT_SECRET"),
   refreshToken: readRequiredEnv("SPOTIFY_REFRESH_TOKEN"),
   playlistId: normalizePlaylistId(readRequiredEnv("SPOTIFY_PLAYLIST_ID")),
+  maxMovesPerRun: readPositiveIntegerEnv("MAX_MOVES_PER_RUN", 470),
+  orderSeedPrefix: readOptionalEnv("ORDER_SEED_PREFIX", "stuff-v1"),
+  pinnedItemUris: readCsvEnv("PINNED_ITEM_URIS", DEFAULT_PINNED_ITEM_URIS),
 };
 
 async function main() {
@@ -40,8 +42,8 @@ async function main() {
   }
 
   const cycleNumber = getOrderCycleNumber();
-  const randomInt = createSeededRandomInt(`stuff-v1:${cycleNumber}`);
-  const plan = buildOrderPlan(items, PINNED_ITEM_URIS, randomInt);
+  const randomInt = createSeededRandomInt(`${config.orderSeedPrefix}:${cycleNumber}`);
+  const plan = buildOrderPlan(items, config.pinnedItemUris, randomInt);
   const currentKeys = items.map((item) => item.key);
   const targetKeys = plan.items.map((item) => item.key);
 
@@ -58,6 +60,7 @@ async function main() {
     currentKeys,
     targetKeys,
     snapshotAfterRead,
+    config.maxMovesPerRun,
   );
 
   if (result.complete) {
@@ -131,7 +134,14 @@ async function getPlaylistItems(accessToken, playlistId) {
   return items;
 }
 
-async function applyPlaylistOrder(accessToken, playlistId, currentKeys, targetKeys, initialSnapshotId) {
+async function applyPlaylistOrder(
+  accessToken,
+  playlistId,
+  currentKeys,
+  targetKeys,
+  initialSnapshotId,
+  maxMovesPerRun,
+) {
   let moveCount = 0;
   let snapshotId = initialSnapshotId;
 
@@ -168,7 +178,7 @@ async function applyPlaylistOrder(accessToken, playlistId, currentKeys, targetKe
       console.log(`Moved ${moveCount} items...`);
     }
 
-    if (moveCount >= MAX_MOVES_PER_RUN) {
+    if (moveCount >= maxMovesPerRun) {
       const complete = currentKeys.every((key, index) => key === targetKeys[index]);
       return { moveCount, complete };
     }
@@ -241,6 +251,36 @@ function readRequiredEnv(name) {
     throw new Error(`Environment variable ${name} still contains a placeholder value.`);
   }
   return value;
+}
+
+function readOptionalEnv(name, fallback) {
+  return process.env[name]?.trim() || fallback;
+}
+
+function readPositiveIntegerEnv(name, fallback) {
+  const rawValue = process.env[name]?.trim();
+  if (!rawValue) return fallback;
+
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`Environment variable ${name} must be a positive integer.`);
+  }
+  return value;
+}
+
+function readCsvEnv(name, fallback) {
+  const rawValue = process.env[name];
+  if (rawValue === undefined) return [...fallback];
+
+  const values = rawValue
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (values.length === 0) {
+    throw new Error(`Environment variable ${name} must contain at least one Spotify item URI.`);
+  }
+  return values;
 }
 
 function loadDotEnv() {
