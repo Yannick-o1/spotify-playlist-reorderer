@@ -1,5 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
-import { buildOrderPlan, createSeededRandomInt } from "./order.mjs";
+import {
+  buildOrderPlan,
+  createSeededRandomInt,
+  DEFAULT_REVERSE_CHRONOLOGICAL_PERCENTAGE,
+} from "./order.mjs";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const API_BASE_URL = "https://api.spotify.com/v1";
@@ -22,8 +26,12 @@ const config = {
   refreshToken: readRequiredEnv("SPOTIFY_REFRESH_TOKEN"),
   playlistId: normalizePlaylistId(readRequiredEnv("SPOTIFY_PLAYLIST_ID")),
   maxMovesPerRun: readPositiveIntegerEnv("MAX_MOVES_PER_RUN", 470),
-  orderSeedPrefix: readOptionalEnv("ORDER_SEED_PREFIX", "stuff-v1"),
+  orderSeedPrefix: readOptionalEnv("ORDER_SEED_PREFIX", "stuff-v2"),
   pinnedItemUris: readCsvEnv("PINNED_ITEM_URIS", DEFAULT_PINNED_ITEM_URIS),
+  reverseChronologicalPercentage: readPercentageEnv(
+    "REVERSE_CHRONOLOGICAL_PERCENTAGE",
+    DEFAULT_REVERSE_CHRONOLOGICAL_PERCENTAGE,
+  ),
 };
 
 async function main() {
@@ -43,7 +51,12 @@ async function main() {
 
   const cycleNumber = getOrderCycleNumber();
   const randomInt = createSeededRandomInt(`${config.orderSeedPrefix}:${cycleNumber}`);
-  const plan = buildOrderPlan(items, config.pinnedItemUris, randomInt);
+  const plan = buildOrderPlan(
+    items,
+    config.pinnedItemUris,
+    randomInt,
+    config.reverseChronologicalPercentage,
+  );
   const currentKeys = items.map((item) => item.key);
   const targetKeys = plan.items.map((item) => item.key);
 
@@ -264,6 +277,17 @@ function readPositiveIntegerEnv(name, fallback) {
   const value = Number(rawValue);
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new Error(`Environment variable ${name} must be a positive integer.`);
+  }
+  return value;
+}
+
+function readPercentageEnv(name, fallback) {
+  const rawValue = process.env[name]?.trim();
+  if (!rawValue) return fallback;
+
+  const value = Number(rawValue);
+  if (!Number.isSafeInteger(value) || value < 0 || value > 100) {
+    throw new Error(`Environment variable ${name} must be an integer from 0 to 100.`);
   }
   return value;
 }

@@ -1,12 +1,27 @@
 import { createHash, randomInt as cryptoRandomInt } from "node:crypto";
 
-export function buildOrderPlan(items, pinnedUris = [], randomInt = cryptoRandomInt) {
+export const DEFAULT_REVERSE_CHRONOLOGICAL_PERCENTAGE = 85;
+
+export function buildOrderPlan(
+  items,
+  pinnedUris = [],
+  randomInt = cryptoRandomInt,
+  reverseChronologicalPercentage = DEFAULT_REVERSE_CHRONOLOGICAL_PERCENTAGE,
+) {
+  if (
+    !Number.isSafeInteger(reverseChronologicalPercentage) ||
+    reverseChronologicalPercentage < 0 ||
+    reverseChronologicalPercentage > 100
+  ) {
+    throw new Error("Reverse chronological percentage must be an integer from 0 to 100.");
+  }
+
   const { pinnedItems, remainingItems } = extractPinnedItems(items, pinnedUris);
   const canonicalItems = [...remainingItems].sort((left, right) =>
     String(left.key).localeCompare(String(right.key)),
   );
 
-  if (randomInt(2) === 0) {
+  if (randomInt(100) < reverseChronologicalPercentage) {
     return {
       name: "reverse-chronological",
       items: [...pinnedItems, ...reverseChronologicalOrder(canonicalItems)],

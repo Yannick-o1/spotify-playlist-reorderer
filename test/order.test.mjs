@@ -34,18 +34,18 @@ test("reverse chronological order puts newest additions first and remains stable
   ]);
 });
 
-test("buildOrderPlan selects reverse chronological ordering for choice zero", () => {
+test("buildOrderPlan selects reverse chronological ordering for choices below 85", () => {
   const plan = buildOrderPlan(ITEMS, [], (upperBound) => {
-    assert.equal(upperBound, 2);
-    return 0;
+    assert.equal(upperBound, 100);
+    return 84;
   });
 
   assert.equal(plan.name, "reverse-chronological");
   assert.equal(plan.items[0].key, "new");
 });
 
-test("buildOrderPlan selects a Fisher-Yates random shuffle for choice one", () => {
-  const choices = [1, 0, 1, 0, 0];
+test("buildOrderPlan selects a Fisher-Yates random shuffle for choices from 85", () => {
+  const choices = [85, 0, 1, 0, 0];
   const upperBounds = [];
   const plan = buildOrderPlan(ITEMS, [], (upperBound) => {
     upperBounds.push(upperBound);
@@ -53,7 +53,7 @@ test("buildOrderPlan selects a Fisher-Yates random shuffle for choice one", () =
   });
 
   assert.equal(plan.name, "random");
-  assert.deepEqual(upperBounds, [2, 5, 4, 3, 2]);
+  assert.deepEqual(upperBounds, [100, 5, 4, 3, 2]);
   assert.deepEqual(plan.items.map((item) => item.key).sort(), ITEMS.map((item) => item.key).sort());
   assert.notDeepEqual(plan.items.map((item) => item.key), ITEMS.map((item) => item.key));
 });
@@ -92,18 +92,45 @@ test("buildOrderPlan fails safely when a pinned item is absent", () => {
   );
 });
 
+test("buildOrderPlan uses an exact 85/15 decision boundary", () => {
+  let reverseChronologicalCount = 0;
+  let randomCount = 0;
+
+  for (let choice = 0; choice < 100; choice += 1) {
+    let callCount = 0;
+    const plan = buildOrderPlan(ITEMS, [], () => {
+      callCount += 1;
+      return callCount === 1 ? choice : 0;
+    });
+
+    if (plan.name === "reverse-chronological") reverseChronologicalCount += 1;
+    if (plan.name === "random") randomCount += 1;
+  }
+
+  assert.equal(reverseChronologicalCount, 85);
+  assert.equal(randomCount, 15);
+});
+
+test("buildOrderPlan rejects an invalid reverse chronological percentage", () => {
+  assert.throws(
+    () => buildOrderPlan(ITEMS, [], () => 0, 101),
+    /integer from 0 to 100/,
+  );
+});
+
 test("seeded random choices are deterministic and stay within bounds", () => {
   const first = createSeededRandomInt("cycle-42");
   const second = createSeededRandomInt("cycle-42");
-  const firstSequence = [first(2), first(7), first(1400), first(2)];
-  const secondSequence = [second(2), second(7), second(1400), second(2)];
+  const firstSequence = [first(100), first(7), first(1400), first(2)];
+  const secondSequence = [second(100), second(7), second(1400), second(2)];
 
   assert.deepEqual(firstSequence, secondSequence);
-  assert.ok(firstSequence.every((value, index) => value >= 0 && value < [2, 7, 1400, 2][index]));
+  assert.ok(firstSequence.every((value, index) => value >= 0 && value < [100, 7, 1400, 2][index]));
 });
 
-test("the active cycle continues the reverse-chronological target already in progress", () => {
-  assert.equal(createSeededRandomInt("stuff-v1:0")(2), 0);
+test("the default decision percentage is 85", () => {
+  const plan = buildOrderPlan(ITEMS, [], () => 84);
+  assert.equal(plan.name, "reverse-chronological");
 });
 
 test("the same cycle produces the same target from a partially reordered playlist", () => {
