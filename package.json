@@ -1,7 +1,7 @@
 {
   "name": "spotify-shuffler",
   "version": "0.1.0",
-  "description": "Keep a Spotify playlist fresh with a 50/50 chronological or random reorder.",
+  "description": "Keep a Spotify playlist fresh with an 85/15 reverse-chronological or random reorder.",
   "type": "module",
   "private": false,
   "scripts": {

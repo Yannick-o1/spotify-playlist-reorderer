@@ -27,6 +27,7 @@ jobs:
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.STUFF_SPOTIFY_REFRESH_TOKEN }}
           SPOTIFY_PLAYLIST_ID: ${{ secrets.STUFF_SPOTIFY_PLAYLIST_ID }}
           MAX_MOVES_PER_RUN: "470"
-          ORDER_SEED_PREFIX: "stuff-v1"
+          ORDER_SEED_PREFIX: "stuff-v2"
+          REVERSE_CHRONOLOGICAL_PERCENTAGE: "85"
           PINNED_ITEM_URIS: "spotify:track:2USTVgd20XRLMAhiYNklN8,spotify:track:5ju3Mgd15jLIAmZLwLPlwY,spotify:track:2073QOEC8rBtSyTsRyaWiP,spotify:track:2J4lJMCuFCA0zlwFOjePD5"
         run: npm start

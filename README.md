@@ -2,10 +2,10 @@
 
 spot shuffle reorders spotify playlists on a repeating three-day cycle while keeping a configurable group of tracks pinned at the top.
 
-each cycle makes an unbiased 50/50 choice for every unpinned playlist item:
+each cycle makes an unbiased 85/15 choice for every unpinned playlist item:
 
-- **reverse chronological:** newest playlist additions first, based on the `added_at` timestamp
-- **random:** a fresh fisher–yates shuffle of every playlist item
+- **reverse chronological — 85%:** newest playlist additions first, based on the `added_at` timestamp
+- **random — 15%:** a fresh fisher–yates shuffle of every playlist item
 
 the script moves items in place instead of clearing and rebuilding the playlist, preserving local and unavailable entries. spotify snapshot ids ensure that a concurrent playlist edit causes a safe failure instead of reordering stale positions.
 
@@ -62,7 +62,7 @@ treat the refresh token like a password and never commit it.
 
 the repository includes two isolated workflows under `.github/workflows`. each workflow uses its own secret names, playlist-specific pinned prefix, deterministic seed, schedule, and move limit.
 
-the larger workflow runs daily at 01:17 utc with a 470-move cap. the smaller workflow runs daily at 03:17 utc with a 100-move cap. each creates a new 50/50 target only once every three days; the daily executions are quota-safe continuations and become no-ops after the target is complete.
+the larger workflow runs daily at 01:17 utc with a 470-move cap. the smaller workflow runs daily at 03:17 utc with a 100-move cap. each creates a new 85/15 target only once every three days; the daily executions are quota-safe continuations and become no-ops after the target is complete.
 
 both workflows can also be triggered manually from the actions tab. scheduled github workflows can be delayed during busy periods. cron schedules use utc.
 
